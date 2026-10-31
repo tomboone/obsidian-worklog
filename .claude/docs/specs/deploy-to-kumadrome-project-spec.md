@@ -108,11 +108,12 @@ The worker reports each Run's outcome to an Uptime Kuma push monitor, `kumadrome
 - With hourly Runs and a 3 h interval, two missed Runs in a row are tolerated; a third alerts. A
   `status=down` alerts at once.
 - **Tests** use Node's built-in `node:test` and `node:assert`, as `*.test.mjs` under `src/`, run with
-  `node --test 'src/**/*.test.mjs'` (quoted, since Node 22 does not accept a directory). No `package.json`, no
+  `node --test 'src/**/*.test.mjs'` (quoted, so Node expands the glob). No `package.json`, no
   dependencies. `.github/workflows/ci.yml` runs them with a syntax check on every PR, and `image.yml` calls it
-  before publishing, so a failing `main` ships no image (NEU-2015). `fetch` is
-  mocked by replacing `globalThis.fetch` in the test. Cover: up with `msg=OK`; down with the encoded,
-  truncated message; no call when the URL is unset or empty; a rejected or non-2xx `fetch` logs and
+  before publishing, so a failing `main` ships no image (NEU-2015). CI builds the image and runs every check
+  inside it, so the Node version lives only in the Dockerfile's `FROM` and is the one that ships
+  (NEU-2016). `fetch` is mocked by replacing `globalThis.fetch` in the test. Cover: up with `msg=OK`;
+  down with the encoded, truncated message; no call when the URL is unset or empty; a rejected or non-2xx `fetch` logs and
   resolves without throwing.
 
 Vault sync is **not** monitored: `ob` has no health command, and a stalled sync shows as missing files on

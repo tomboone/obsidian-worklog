@@ -16,18 +16,39 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # The image's Node major (Dockerfile: node:22-bookworm-slim), so CI tests what ships.
-      - name: Set up Node
-        uses: actions/setup-node@v7
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # Every check runs inside this image, so CI tests the Node the Dockerfile's FROM ships and the Node
+      # version is written nowhere else (NEU-2016). Same platform and cache as image.yml's publish.
+      - name: Build image
+        uses: docker/build-push-action@v7
         with:
-          node-version: "22"
+          context: .
+          push: false
+          load: true
+          platforms: linux/amd64
+          tags: obsidian-worklog:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Node version
+        run: docker run --rm obsidian-worklog:ci node --version
 
       # No package.json and no dependencies (spec Decision 5), so syntax checks stand in for a linter.
+      # Stops at the first file that fails; `find -exec … \;` would exit 0 whatever node --check returns.
       - name: Syntax check
         run: |
-          find src -name '*.mjs' -print0 | xargs -0 -n1 node --check
-          sh -n scripts/loop.sh
+          docker run --rm obsidian-worklog:ci sh -c '
+            set -e
+            for f in $(find src -name "*.mjs"); do node --check "$f"; done
+            sh -n scripts/loop.sh
+          '
 
-      # Quoted so Node expands the glob; Node 22 does not accept a directory here.
+      # Quoted so Node expands the glob, not the runner's shell.
       - name: Tests
-        run: node --test 'src/**/*.test.mjs'
+        run: docker run --rm obsidian-worklog:ci node --test 'src/**/*.test.mjs'
+
+      # obsidian-headless has to start on this Node, or Vault sync dies on kumadrome.
+      - name: ob starts
+        run: docker run --rm obsidian-worklog:ci ob --version
