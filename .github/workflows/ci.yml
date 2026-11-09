@@ -1,54 +1,43 @@
 name: ci
 
-# Runs on PRs, and on main only through image.yml, which calls it before publishing so a red main
-# ships no image. No push trigger here, so main runs it once.
 on:
   pull_request:
-  workflow_call:
+  push:
+    branches: [main]
+
+# A newer push to a PR cancels its older run; runs on main are never cancelled.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
-  ci:
+  # Builds the image without pushing, checks it doesn't run as root, runs .github/ci/smoke.sh. No js workflow:
+  # there is no package.json (spec Decision 5), so the syntax check and tests run inside the image, in smoke.sh.
+  image:
+    uses: neuroticsasquat-ch/workflows/.github/workflows/image-check.yml@v1
+    with:
+      name: obsidian-worklog
+      platforms: linux/amd64 # kumadrome (2011 Mac mini) is x86_64
+
+  ci: # the one required check; the name is the contract
+    if: always()
+    needs: [image] # every other job, extras included
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      # Every check runs inside this image, so CI tests the Node the Dockerfile's FROM ships and the Node
-      # version is written nowhere else (NEU-2016). Same platform and cache as image.yml's publish.
-      - name: Build image
-        uses: docker/build-push-action@v7
+      - uses: neuroticsasquat-ch/workflows/actions/gate@v1
         with:
-          context: .
-          push: false
-          load: true
-          platforms: linux/amd64
-          tags: obsidian-worklog:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          needs: ${{ toJSON(needs) }}
 
-      - name: Node version
-        run: docker run --rm obsidian-worklog:ci node --version
-
-      # No package.json and no dependencies (spec Decision 5), so syntax checks stand in for a linter.
-      # Stops at the first file that fails; `find -exec … \;` would exit 0 whatever node --check returns.
-      - name: Syntax check
-        run: |
-          docker run --rm obsidian-worklog:ci sh -c '
-            set -e
-            for f in $(find src -name "*.mjs"); do node --check "$f"; done
-            sh -n scripts/loop.sh
-          '
-
-      # Quoted so Node expands the glob, not the runner's shell.
-      - name: Tests
-        run: docker run --rm obsidian-worklog:ci node --test 'src/**/*.test.mjs'
-
-      # obsidian-headless has to start on this Node, or Vault sync dies on kumadrome.
-      - name: ob starts
-        run: docker run --rm obsidian-worklog:ci ob --version
+  # main → latest and sha-<7>, only after ci passed on that commit. Watchtower deploys latest.
+  publish:
+    if: ${{ !cancelled() && github.event_name == 'push' && needs.ci.result == 'success' }}
+    needs: ci
+    concurrency: { group: "publish-${{ github.ref }}", cancel-in-progress: false }
+    permissions: { contents: read, packages: write }
+    uses: neuroticsasquat-ch/workflows/.github/workflows/image-publish.yml@v1
+    with:
+      image: ghcr.io/tomboone/obsidian-worklog
+      platforms: linux/amd64
