@@ -13,7 +13,8 @@ already exists there ([ops `kumadrome-apps.md`](https://github.com/neuroticsasqu
 Besides this repository, the outside accounts involved are Obsidian Sync, GitHub, the two Linear workspaces, and
 the ops Uptime Kuma.
 
-Images are published by `.github/workflows/image.yml` on every push to `main`:
+Images are published by the `publish` job in `.github/workflows/ci.yml` on every push to `main`, once `ci` has
+passed on that commit:
 
 | Tag | Use |
 |---|---|

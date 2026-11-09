@@ -34,6 +34,13 @@ kumadrome has no `~/.docker/config.json`), and the `obsidian-headless-sync` pack
 
 ### 3. `image.yml` aligned with the sibling image workflows
 
+> **Superseded (NEU-2246).** `image.yml` is gone: `ci.yml` calls the shared `neuroticsasquat-ch/workflows@v1`
+> `image-check.yml` and `image-publish.yml` (ops `docs/specs/ops-shared-ci-workflows-project-spec.md`). The
+> tags, platform and "ci gates publish" below still hold. The rest is out of date: the concurrency group is
+> now `publish-<ref>`, and that group no longer keeps push order. `latest` is protected by image-publish's
+> tip check instead (NEU-2227): a commit that is no longer the tip of `main` pushes only `sha-<7>`. Action
+> versions are pinned in the shared workflows.
+
 `.github/workflows/image.yml` follows closinglineup's / argelander's shape:
 
 - Trigger: `push` to `main` only (no `v*` tags, no `workflow_dispatch` needed beyond what siblings have).
@@ -109,10 +116,10 @@ The worker reports each Run's outcome to an Uptime Kuma push monitor, `kumadrome
   `status=down` alerts at once.
 - **Tests** use Node's built-in `node:test` and `node:assert`, as `*.test.mjs` under `src/`, run with
   `node --test 'src/**/*.test.mjs'` (quoted, so Node expands the glob). No `package.json`, no
-  dependencies. `.github/workflows/ci.yml` runs them with a syntax check on every PR, and `image.yml` calls it
-  before publishing, so a failing `main` ships no image (NEU-2015). CI builds the image and runs every check
-  inside it, so the Node version lives only in the Dockerfile's `FROM` and is the one that ships
-  (NEU-2016). `fetch` is mocked by replacing `globalThis.fetch` in the test. Cover: up with `msg=OK`;
+  dependencies. `.github/ci/smoke.sh` runs them with a syntax check, and `ci.yml`'s `image` job (the shared
+  `image-check.yml`) runs it on every PR and on `main`; `publish` waits for `ci`, so a failing `main` ships
+  no image (NEU-2015, NEU-2246). Every check runs inside the image, so the Node version lives only in the
+  Dockerfile's `FROM` and is the one that ships (NEU-2016). `fetch` is mocked by replacing `globalThis.fetch` in the test. Cover: up with `msg=OK`;
   down with the encoded, truncated message; no call when the URL is unset or empty; a rejected or non-2xx `fetch` logs and
   resolves without throwing.
 
